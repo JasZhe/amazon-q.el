@@ -83,7 +83,8 @@ Detecting tool permission promots."
     (insert amazon-q--text-to-send)
     (save-buffer)
     (setq amazon-q--text-to-send nil)
-    (server-edit)))
+    (server-edit))
+  (display-buffer (amazon-q--get-buffer-create)))
 
 (add-hook 'server-visit-hook 'amazon-q-track-client-buffer)
 (add-hook 'server-switch-hook 'amazon-q--editor-buffer-insert-region)
@@ -96,16 +97,19 @@ Detecting tool permission promots."
 
 (defun amazon-q--clear-context ()
   (interactive)
+  (display-buffer (amazon-q--get-buffer-create))
   (comint-send-string (get-buffer-process (amazon-q--get-buffer-create)) "/clear\r")
   (comint-send-string (get-buffer-process (amazon-q--get-buffer-create)) "y\r"))
 
 
 (defun amazon-q--compact-context ()
   (interactive)
+  (display-buffer (amazon-q--get-buffer-create))
   (comint-send-string (get-buffer-process (amazon-q--get-buffer-create)) "/compact\r"))
 
 
-(defun amazon-q--add-context ()
+(defun amazon-q--add-file-to-context ()
   (interactive)
-  ()
-  )
+  (display-buffer (amazon-q--get-buffer-create))
+  (let ((file-to-add (read-file-name "Add to context: ")))
+    (comint-send-string (get-buffer-process (amazon-q--get-buffer-create)) (format "/context add %s\r" file-to-add))))
