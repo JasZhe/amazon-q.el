@@ -26,7 +26,7 @@ Responsible for applying ansi color to the strings.
 Removing some excessive whitespace.
 Detecting tool permission promots."
   (when (string-match "Using tool: \\(.*\\)" string)
-    (setq amazon-q--tool-requiring-permission (match-string 1 (ansi-color-apply string))))
+    (setq amazon-q--tool-requiring-permission (ansi-color-apply (match-string 1 string))))
 
   (when (string-match-p "Allow this action?" string)
     (if (string= (completing-read (format "Allow action %s?" amazon-q--tool-requiring-permission) '("yes" "no")) "yes")
