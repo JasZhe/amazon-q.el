@@ -1,0 +1,25 @@
+* Simple Interaction With Amazon Q In Emacs
+
+Supports:
+- term or comint backend.
+- sending the region
+- selecting files to add to context
+- separate q session per project
+- clearing and compacting context
+
+TODO:
+- a transient menu
+- more dwim ways to send text i.e. defun at point
+- detecting code blocks and fontifying
+- a mode line change for when the Q process is ready to accept more input
+  - modeline to show context window usage
+- removing file from context
+- hooks
+- saving/loading conversation state
+- selecting model
+- better session management
+- agent switching
+- changing permissions
+
+Stretch:
+- changing settings in an emacs completing read sort of way
