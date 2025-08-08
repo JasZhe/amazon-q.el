@@ -34,36 +34,49 @@
 ;;; Maybe there's an actual way to get the multi-line prompts to work with comint but for now this works
 
 
-(defvar amazon-q--accumulated-prompt-output ""
-  "Output from the previous prompt.
-Used to check if amazon Q is ready to accept more commands.")
+(defvar amazon-q--comint-accumulated-prompt-output ""
+  "Output from the previous prompt.")
 
 (defun amazon-q--comint-process-filter (proc string)
-  "Process filter for amazon q.
-Responsible for applying ansi color to the strings.
-Removing some excessive whitespace.
-Detecting tool permission promots."
-  (when (string-match "Using tool: \\(.*\\)" string)
-    (setq amazon-q--tool-requiring-permission (ansi-color-apply (match-string 1 string))))
+  "Process filter for amazon q."
 
-  (when (string-match-p "Allow this action?" string)
-    (if (string= (completing-read (format "Allow action %s?" amazon-q--tool-requiring-permission) '("yes" "no")) "yes")
-        (comint-send-string (get-buffer-process (amazon-q--get-buffer-create)) "y\r")
-      (comint-send-string (get-buffer-process (amazon-q--get-buffer-create)) "n\r")))
+  (let ((clean-string (ansi-color-filter-apply string)))
+    (setq amazon-q--comint-accumulated-prompt-output (concat amazon-q--comint-accumulated-prompt-output clean-string))
+    ;;  is a carriage return represented by /r
+    ;; also check for any of the permutations of that loading spinner character
+    (setq amazon-q--comint-accumulated-prompt-output
+          (replace-regexp-in-string "\r[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\\s-*Thinking\\.\\.\\." "" amazon-q--comint-accumulated-prompt-output))
 
+    (when (string-match "Using tool: \\(.*\\)" amazon-q--comint-accumulated-prompt-output)
+      (setq amazon-q--tool-requiring-permission (match-string 1 amazon-q--comint-accumulated-prompt-output)))
+
+    (when (string-match-p "Allow this action?" string)
+      (if (string= (completing-read (format "Allow action %s?" amazon-q--tool-requiring-permission) '("yes" "no")) "yes")
+          (comint-send-string (get-buffer-process (amazon-q--get-buffer-create)) "y\r")
+        (comint-send-string (get-buffer-process (amazon-q--get-buffer-create)) "n\r"))))
   (comint-output-filter proc string))
+
 
 (defun amazon-q--comint-start (buffer)
   (let ((process-environment (append '("EDITOR=emacsclient") process-environment)))
     (with-current-buffer buffer
-      (comint-mode))
+      (amazon-q-comint-mode))
     (start-process "amazon-q" buffer "bash" "-c" "q chat")
-    (set-process-filter (get-buffer-process buffer) #'amazon-q--jason)
+    (set-process-filter (get-buffer-process buffer) #'amazon-q--comint-process-filter)
     (display-buffer buffer)))
 
 
 (defun amazon-q--comint-send (buffer prompt)
+  "Calls comint-send-string but clears amazon-q--comint-accumulated-prompt-output before hand."
+  (setq amazon-q--comint-accumulated-prompt-output "") ;; new prompt need to reset to ""
   (comint-send-string (get-buffer-process buffer) (format "%s\r" prompt)))
+
+
+(define-derived-mode amazon-q-comint-mode comint-mode "Amazon Q"
+  "Major mode for Amazon Q chat sessions with the comint backend."
+  ;; need to unset the accumulated prompt output in the case where the user is interacting with amazon q
+  ;; outside of amazon-q--comint-send
+  (add-hook 'comint-input-filter-functions (lambda (_) (setq amazon-q--comint-accumulated-prompt-output "")) nil t))
 
 
 (provide 'amazon-q-comint-backend)
