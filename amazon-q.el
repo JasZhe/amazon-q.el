@@ -6,7 +6,7 @@
 ;; Maintainer: Jason Zhen
 ;; Created: August 6, 2025
 ;; Version: 0.0.1
-;; Package-Requires: ((emacs "28.2"))
+;; Package-Requires: ((emacs "30.0"))
 ;; URL: https://github.com/JasZhe/amazon-q.el
 ;;
 ;; This file is not part of GNU Emacs.
@@ -34,7 +34,79 @@
 (require 'amazon-q-term-backend)
 (require 'amazon-q-comint-backend)
 
-(defvar amazon-q-backend 'comint)
+(defgroup amazon-q nil
+  "Amazon Q interface for Emacs."
+  :group 'tools)
+
+(defcustom amazon-q-backend 'comint
+  "Backend to use for Amazon Q."
+  :type '(choice
+          (const :tag "Term backend" term)
+          (const :tag "Comint backend" comint))
+  :group 'amaozn-q)
+
+(defcustom amazon-q-system-prompt-file "~/.amazon-q-system-prompt.md"
+  "Path to system prompt file to automatically add to context."
+  :type 'string
+  :group 'amazon-q)
+
+(defcustom amazon-q-auto-generate-system-prompt t
+  "Automatically generate system prompt file if it doesn't exist."
+  :type 'boolean
+  :group 'amazon-q)
+
+(defconst amazon-q-default-system-prompt
+  "# Amazon Q System Instructions
+
+You are a helpful AI assistant. When providing code examples or code blocks, please follow these formatting rules:
+
+- Begin every code block with {begin_code_block}
+- End every code block with {end_code_block}
+- Place these markers on their own lines
+- Keep the standard markdown code fences () inside the markers
+
+Example format:
+{begin_code_block}
+python
+def example():
+    return \"Hello World\"
+
+{end_code_block}
+
+This formatting helps with automated processing and integration with development tools.
+
+Please follow these formatting rules consistently throughout our conversation."
+ "Default content for the system prompt file.")
+
+(defcustom amazon-q-code-block-begin-marker "{begin_code_block}"
+ "Marker to begin code blocks."
+ :type 'string
+ :group 'amazon-q)
+
+(defcustom amazon-q-code-block-end-marker "{end_code_block}"
+ "Marker to end code blocks."
+ :type 'string
+ :group 'amazon-q)
+
+
+(defun amazon-q--ensure-system-prompt-file ()
+  "Create system prompt file if it doesn't exist and auto-generation is enabled.
+Uses `amazon-q-default-system-prompt' as content if the file is createed."
+  (let ((prompt-file (expand-file-name amazon-q-system-prompt-file)))
+    (when (and amazon-q-auto-generate-system-prompt
+               (not (file-exists-p prompt-file)))
+      (with-temp-file prompt-file
+        (insert amazon-q-default-system-prompt))
+      (message "Created Amazon Q system prompt file: %s" prompt-file))
+    prompt-file))
+
+
+(defvar amazon-q--code-block-regex
+  (format "%s\n\\(?:\\([a-zA-Z0-9+-]+\\)\\)?\n\\(\\(?:.\\|\n\\)*?\\)
+\n%s"
+          (regexp-quote amazon-q-code-block-begin-marker)
+          (regexp-quote amazon-q-code-block-end-marker))
+  "Regex to match code blocks with custom markers.")
 
 (defun amazon-q--get-buffer-create ()
   (when (project-current)
@@ -43,10 +115,12 @@
 
 (defun amazon-q-start ()
   (interactive)
+  (amazon-q--ensure-system-prompt-file)
   (if (get-buffer-process (amazon-q--get-buffer-create))
       (switch-to-buffer (amazon-q--get-buffer-create))
     (cond ((eq amazon-q-backend 'term) (amazon-q--term-start (amazon-q--get-buffer-create)))
-          ((eq amazon-q-backend 'comint) (amazon-q--comint-start (amazon-q--get-buffer-create))))))
+          ((eq amazon-q-backend 'comint) (amazon-q--comint-start (amazon-q--get-buffer-create))))
+    (amazon-q--send (format "/context add %s" amazon-q-system-prompt-file))))
 
 
 (defun amazon-q--send (prompt)
