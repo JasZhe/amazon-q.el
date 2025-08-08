@@ -30,7 +30,7 @@
 ;;
 ;;; Commentary:
 
-
+(require 'transient)
 (require 'amazon-q-term-backend)
 (require 'amazon-q-comint-backend)
 
@@ -137,11 +137,34 @@ With a prefix ARG, edit the prompt before sending."
   (let ((file-to-add (read-file-name "Add to context: ")))
     (amazon-q--send (format "/context add %s" file-to-add))))
 
-(defun amazon-q-rmeove-file-from-context ()
+(defun amazon-q-remove-file-from-context ()
+  (interactive)
+  (amazon-q--send "/context show")
+
+  (cond ((eq amazon-q-backend 'term) (message "TODO"))
+        ((eq amazon-q-backend 'comint)
+         (setq amazon-q--comint-callback #'amazon-q--remove-file-from-context-callback))))
+
+(defun amazon-q--remove-file-from-context-callback ()
   "Prompt for a file to removed from th amazon Q context."
   (interactive)
-  (let ((file-to-add (read-file-name "Add to context: ")))
-    (amazon-q--send (format "/context add %s" file-to-add))))
+  (let ((files '()))
+    (dolist (line (split-string amazon-q--comint-accumulated-prompt-output "\n"))
+      (cond
+           ;; Handle files with match counts: "~/path/file.ext (1 match)"
+           ((string-match "^[[:space:]]*\\([^[:space:]]+\\.[a-zA-Z]+\\)[[:space:]]*(\\([0-9]+\\) match)" line)
+            (push (match-string 1 line) files))
+           ;; Handle wildcard patterns: ".amazonq/rules/**/*.md"
+           ((string-match "^[[:space:]]*\\([^[:space:]]+/\\*\\*/\\*\\.[a-zA-Z]+\\)[[:space:]]*$" line)
+            (push (match-string 1 line) files))
+           ;; Handle simple filenames: "AmazonQ.md", "README.md"
+           ((string-match "^[[:space:]]*\\([^[:space:]]+\\.[a-zA-Z]+\\)[[:space:]]*$" line)
+            (push (match-string 1 line) files))))
+    (setq files (nreverse files))
+    (let ((file-to-remove (completing-read "Remove file from context: " files)))
+      (if file-to-remove
+          (amazon-q--send (format "/context remove %s" file-to-remove))
+        (message "No file selected.")))))
 
 (transient-define-prefix amazon-q-transient ()
   "Amazon Q Menu."
