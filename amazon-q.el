@@ -90,31 +90,77 @@ Otherwise, the user will have the opportunity to edit the emacsclient buffer."
 
 (defun amazon-q-send-region (arg)
   "Send the current region to amazon Q.
-With a prefix arg, edit the prompt before sending."
+With a prefix ARG, edit the prompt before sending."
   (interactive "P")
   (setq amazon-q--send-region-immediately (not arg))
   (setq amazon-q--buffer (amazon-q--get-buffer-create))
   (setq amazon-q--text-to-send (buffer-substring-no-properties (region-beginning) (region-end)))
   (amazon-q--send "/editor"))
 
-(defun amazon-q--clear-context ()
-  "Runs /clear to clear amazon Q context."
+
+(defun amazon-q-send-defun (arg)
+  "Send the defun at point to amazon Q.
+With a prefix ARG, edit the prompt before sending."
+  (interactive "P")
+  (setq amazon-q--send-region-immediately (not arg))
+  (setq amazon-q--buffer (amazon-q--get-buffer-create))
+  (setq amazon-q--text-to-send (thing-at-point 'defun))
+  (amazon-q--send "/editor"))
+
+
+(defun amazon-q-explain-error (arg)
+  "Send the flymake diagnostic at point to amazon Q.
+With a prefix ARG, edit the prompt before sending."
+  (interactive "P")
+  (setq amazon-q--send-region-immediately (not arg))
+  (setq amazon-q--buffer (amazon-q--get-buffer-create))
+  (if-let ((diagnostics (flymake-diagnostics (1- (point)) (1+ (point)))))
+      (progn
+        (setq amazon-q--text-to-send (flymake-diagnostic-text (first diagnostics)))
+        (amazon-q--send "/editor"))
+    (message "No diagnostic at point.")))
+
+(defun amazon-q-clear-context ()
+  "Run /clear to clear amazon Q context."
   (interactive)
-  (display-buffer (amazon-q--get-buffer-create))
   (amazon-q--send "/clear")
   (amazon-q--send "y"))
 
-(defun amazon-q--compact-context ()
-  "Runs /compact to compact amazon Q context."
+(defun amazon-q-compact-context ()
+  "Run /compact to compact amazon Q context."
   (interactive)
-  (display-buffer (amazon-q--get-buffer-create))
   (amazon-q--send "/compact"))
 
-(defun amazon-q--add-file-to-context ()
+(defun amazon-q-add-file-to-context ()
   "Prompt for a file to add to amazon Q context."
   (interactive)
-  (display-buffer (amazon-q--get-buffer-create))
   (let ((file-to-add (read-file-name "Add to context: ")))
     (amazon-q--send (format "/context add %s" file-to-add))))
+
+(defun amazon-q-rmeove-file-from-context ()
+  "Prompt for a file to removed from th amazon Q context."
+  (interactive)
+  (let ((file-to-add (read-file-name "Add to context: ")))
+    (amazon-q--send (format "/context add %s" file-to-add))))
+
+(transient-define-prefix amazon-q-transient ()
+  "Amazon Q Menu."
+  ["Amazon Q"
+   ["Session Management"
+    ("q" "Start or switch to Amazon Q buffer" amazon-q-start)
+    ]
+   ["Quick actions"
+    ("r" "Send region." amazon-q-send-region)
+    ("d" "Send defun at point." amazon-q-send-defun)
+    ("e" "Explain diagnostic/error at point." amazon-q-explain-error)
+    ]
+   ["Slash commands."
+    ("f" "Add a file to context." amazon-q-add-file-to-context)
+    ("c" "Compact context." amazon-q-compact-context)
+    ("x" "Clear context." amazon-q-clear-context)
+    ]
+   ])
+
+
 
 (provide 'amazon-q)

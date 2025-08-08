@@ -49,8 +49,7 @@ Detecting tool permission promots."
     (if (string= (completing-read (format "Allow action %s?" amazon-q--tool-requiring-permission) '("yes" "no")) "yes")
         (amazon-q--send ("y"))
       (amazon-q--send "n")))
-  (term-emulate-terminal proc string)
-  )
+  (term-emulate-terminal proc string))
 
 (defun amazon-q--term-start (buffer)
   (let* (;; this is so amazon q cli will send us bells if chat notifications are enabled.
