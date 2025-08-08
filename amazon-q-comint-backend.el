@@ -49,6 +49,9 @@ To get the Amazon Q prompt response see `amazon-q--accumulated-prompt-output' in
 Warning: \"Readiness\" is heuristics-based so may not work perfectly all the time.
 We simply check to see if a new cli prompt got outputted by the process i.e. \"^ >$\"")
 
+
+(defvar amazon-q--comint-tool-requiring-permission "" "Potential tool that might require permission from the user")
+
 (defun amazon-q--comint-process-filter (proc string)
   "Process filter for amazon q."
 
@@ -62,10 +65,10 @@ We simply check to see if a new cli prompt got outputted by the process i.e. \"^
     (setq amazon-q--comint-ready-for-input (string-match-p "> $" string))
 
     (when (string-match "Using tool: \\(.*\\)" amazon-q--comint-accumulated-prompt-output)
-      (setq amazon-q--tool-requiring-permission (match-string 1 amazon-q--comint-accumulated-prompt-output)))
+      (setq amazon-q--comint-tool-requiring-permission (match-string 1 amazon-q--comint-accumulated-prompt-output)))
 
     (when (string-match-p "Allow this action?" string)
-      (if (string= (completing-read (format "Allow action %s?" amazon-q--tool-requiring-permission) '("yes" "no")) "yes")
+      (if (string= (completing-read (format "Allow action %s?" amazon-q--comint-tool-requiring-permission) '("yes" "no")) "yes")
           (comint-send-string (get-buffer-process (amazon-q--get-buffer-create)) "y\r")
         (comint-send-string (get-buffer-process (amazon-q--get-buffer-create)) "n\r"))))
   (prog1

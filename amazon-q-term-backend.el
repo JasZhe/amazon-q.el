@@ -33,6 +33,8 @@
 
 (defvar amazon-q--term-ready nil)
 
+(defvar amazon-q--term-tool-requiring-permission "" "Potential tool that might require permission from the user")
+
 (defun amazon-q--term-process-filter (proc string)
   "Process filter for amazon q.
 Responsible for applying ansi color to the strings.
@@ -43,10 +45,10 @@ Detecting tool permission promots."
     (setq amazon-q--term-ready t))
 
   (when (string-match "Using tool: \\(.*\\)" string)
-    (setq amazon-q--tool-requiring-permission (ansi-color-apply (match-string 1 string))))
+    (setq amazon-q--term-tool-requiring-permission (ansi-color-apply (match-string 1 string))))
 
   (when (string-match-p "Allow this action?" string)
-    (if (string= (completing-read (format "Allow action %s?" amazon-q--tool-requiring-permission) '("yes" "no")) "yes")
+    (if (string= (completing-read (format "Allow action %s?" amazon-q--term-tool-requiring-permission) '("yes" "no")) "yes")
         (amazon-q--send ("y"))
       (amazon-q--send "n")))
   (term-emulate-terminal proc string))
@@ -74,7 +76,5 @@ Detecting tool permission promots."
 
 (define-derived-mode amazon-q-term-mode term-mode "Amazon Q Term"
   :keymap amazon-q-term-mode-map)
-
-(defvar amazon-q--tool-requiring-permission "" "Potential tool that might require permission from the user")
 
 (provide 'amazon-q-term-backend)
