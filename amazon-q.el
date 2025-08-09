@@ -88,7 +88,6 @@ Please follow these formatting rules consistently throughout our conversation."
  :type 'string
  :group 'amazon-q)
 
-
 (defun amazon-q--ensure-system-prompt-file ()
   "Create system prompt file if it doesn't exist and auto-generation is enabled.
 Uses `amazon-q-default-system-prompt' as content if the file is createed."
@@ -100,6 +99,16 @@ Uses `amazon-q-default-system-prompt' as content if the file is createed."
       (message "Created Amazon Q system prompt file: %s" prompt-file))
     prompt-file))
 
+(defvar amazon-q-region-context-filename ".amazonq-context"
+  "Per-project file to contain context we can specify by region,
+rather than adding an entire file's worth of context.")
+
+(defun amazon-q--ensure-context-file ()
+  "Create temporary per-project context file if it doesn't exist."
+  (let ((context-file (expand-file-name (concat (project-root (project-current)) amazon-q-region-context-filename))))
+    (when (not (file-exists-p context-file))
+      (with-temp-file context-file))
+    context-file))
 
 (defvar amazon-q--code-block-regex
   (format "%s\n\\(?:\\([a-zA-Z0-9+-]+\\)\\)?\n\\(\\(?:.\\|\n\\)*?\\)
@@ -115,12 +124,14 @@ Uses `amazon-q-default-system-prompt' as content if the file is createed."
 
 (defun amazon-q-start ()
   (interactive)
-  (amazon-q--ensure-system-prompt-file)
-  (if (get-buffer-process (amazon-q--get-buffer-create))
-      (switch-to-buffer (amazon-q--get-buffer-create))
-    (cond ((eq amazon-q-backend 'term) (amazon-q--term-start (amazon-q--get-buffer-create)))
-          ((eq amazon-q-backend 'comint) (amazon-q--comint-start (amazon-q--get-buffer-create))))
-    (amazon-q--send (format "/context add %s" amazon-q-system-prompt-file))))
+  (let ((system-prompt-file (amazon-q--ensure-system-prompt-file))
+        (context-file (amazon-q--ensure-context-file)))
+    (if (get-buffer-process (amazon-q--get-buffer-create))
+        (switch-to-buffer (amazon-q--get-buffer-create))
+      (cond ((eq amazon-q-backend 'term) (amazon-q--term-start (amazon-q--get-buffer-create)))
+            ((eq amazon-q-backend 'comint) (amazon-q--comint-start (amazon-q--get-buffer-create))))
+      (amazon-q--send (format "/context add %s" context-file))
+      (amazon-q--send (format "/context add %s" system-prompt-file)))))
 
 
 (defun amazon-q--send (prompt)
@@ -171,6 +182,15 @@ With a prefix ARG, edit the prompt before sending."
   (setq amazon-q--text-to-send (buffer-substring-no-properties (region-beginning) (region-end)))
   (amazon-q--send "/editor"))
 
+
+(defun amazon-q-send-region-as-context (arg)
+  "Send the current region to amazon Q.
+With a prefix ARG, edit the prompt before sending."
+  (interactive "P")
+  (let ((context-file (expand-file-name (concat (project-root (project-current)) amazon-q-region-context-filename))))
+    (with-temp-file context-file
+      (insert (buffer-substring-no-properties (region-beginning) (region-end)))
+      (insert "\n"))))
 
 (defun amazon-q-send-defun (arg)
   "Send the defun at point to amazon Q.
@@ -248,6 +268,7 @@ With a prefix ARG, edit the prompt before sending."
     ]
    ["Quick actions"
     ("r" "Send region." amazon-q-send-region)
+    ("R" "Add region as context." amazon-q-send-region-as-context)
     ("d" "Send defun at point." amazon-q-send-defun)
     ("e" "Explain diagnostic/error at point." amazon-q-explain-error)
     ]
