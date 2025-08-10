@@ -36,6 +36,7 @@
 ;;; Code:
 
 (require 'transient)
+(require 'amazon-q-system-prompt)
 (require 'amazon-q-term-backend)
 (require 'amazon-q-comint-backend)
 
@@ -49,65 +50,6 @@
           (const :tag "Term backend" term)
           (const :tag "Comint backend" comint))
   :group 'amaozn-q)
-
-(defcustom amazon-q-system-prompt-file ".amazon-q-system-prompt.md"
-  "Path to system prompt file to automatically add to context."
-  :type 'string
-  :group 'amazon-q)
-
-(defcustom amazon-q-auto-generate-system-prompt t
-  "Automatically generate system prompt file if it doesn't exist."
-  :type 'boolean
-  :group 'amazon-q)
-
-(defconst amazon-q-default-system-prompt
-  "# Amazon Q System Instructions
-
-You are a helpful AI assistant. When providing code examples or code blocks, please follow these formatting rules:
-
-- Begin every code block with {begin_code_block}
-- End every code block with {end_code_block}
-- Place these markers on their own lines
-- Keep the standard markdown code fences () inside the markers
-
-Example format:
-{begin_code_block}
-python
-def example():
-    return \"Hello World\"
-
-{end_code_block}
-
-This formatting helps with automated processing and integration with development tools.
-
-Please follow these formatting rules consistently throughout our conversation."
- "Default content for the system prompt file.
-WARNING: Be careful modifying this because fontification heavily relies on
-Q sending the code block delimters.
-
-Otherwise it makes font-locking the code blocks VERY difficult.")
-
-(defcustom amazon-q-code-block-begin-marker "{begin_code_block}"
- "Marker to begin code blocks."
- :type 'string
- :group 'amazon-q)
-
-(defcustom amazon-q-code-block-end-marker "{end_code_block}"
- "Marker to end code blocks."
- :type 'string
- :group 'amazon-q)
-
-(defun amazon-q--ensure-system-prompt-file ()
-  "Create system prompt file if it doesn't exist and auto-generation is enabled.
-Per-project system prompt.
-Uses `amazon-q-default-system-prompt' as content if the file is createed."
-  (let ((prompt-file (expand-file-name (concat (project-root (project-current)) amazon-q-system-prompt-file))))
-    (when (and amazon-q-auto-generate-system-prompt
-               (not (file-exists-p prompt-file)))
-      (with-temp-file prompt-file
-        (insert amazon-q-default-system-prompt))
-      (message "Created Amazon Q system prompt file: %s" prompt-file))
-    prompt-file))
 
 (defvar amazon-q-region-context-filename ".amazonq-context"
   "Per-project file to contain context.
@@ -278,6 +220,7 @@ With a prefix ARG, edit the prompt before sending."
           (amazon-q--send (format "/context remove %s" file-to-remove))
         (message "No file selected.")))))
 
+;;;###autoload
 (transient-define-prefix amazon-q-transient ()
   "Amazon Q Menu."
   ["Amazon Q"
@@ -296,8 +239,6 @@ With a prefix ARG, edit the prompt before sending."
     ("x" "Clear context." amazon-q-clear-context)
     ]
    ])
-
-
 
 (provide 'amazon-q)
 ;;; amazon-q.el ends here.
