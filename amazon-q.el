@@ -45,7 +45,9 @@
   :group 'tools)
 
 (defcustom amazon-q-backend 'comint
-  "Backend to use for Amazon Q."
+  "Backend to use for Amazon Q.
+The term backend requires notifications to be on to work properly.
+q settings chat.enableNotifications true."
   :type '(choice
           (const :tag "Term backend" term)
           (const :tag "Comint backend" comint))
@@ -195,7 +197,8 @@ With a prefix ARG, edit the prompt before sending."
   (interactive)
   (amazon-q--send "/context show")
 
-  (cond ((eq amazon-q-backend 'term) (message "TODO"))
+  (cond ((eq amazon-q-backend 'term)
+         (setq amazon-q--term-callback #'amazon-q--remove-file-from-context-callback))
         ((eq amazon-q-backend 'comint)
          (setq amazon-q--comint-callback #'amazon-q--remove-file-from-context-callback))))
 
@@ -203,7 +206,10 @@ With a prefix ARG, edit the prompt before sending."
   "Prompt for a file to removed from th amazon Q context."
   (interactive)
   (let ((files '()))
-    (dolist (line (split-string amazon-q--comint-accumulated-prompt-output "\n"))
+    (dolist (line
+             (if (eq amazon-q-backend 'comint)
+                 (split-string amazon-q--comint-accumulated-prompt-output "\n")
+               (split-string amazon-q--term-accumulated-prompt-output "\r")))
       (cond
            ;; Handle files with match counts: "~/path/file.ext (1 match)"
            ((string-match "^[[:space:]]*\\([^[:space:]]+\\.[a-zA-Z]+\\)[[:space:]]*(\\([0-9]+\\) match)" line)
@@ -235,6 +241,7 @@ With a prefix ARG, edit the prompt before sending."
     ]
    ["Slash commands."
     ("f" "Add a file to context." amazon-q-add-file-to-context)
+    ("F" "Remove a file from context." amazon-q-remove-file-from-context)
     ("c" "Compact context." amazon-q-compact-context)
     ("x" "Clear context." amazon-q-clear-context)
     ]

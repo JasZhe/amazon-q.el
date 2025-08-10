@@ -76,15 +76,15 @@ Lastly, if we determine Q is done spewing output, calls
     (setq amazon-q--comint-accumulated-prompt-output
           (replace-regexp-in-string "\r[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\\s-*Thinking\\.\\.\\." "" amazon-q--comint-accumulated-prompt-output))
 
-    (setq amazon-q--comint-ready-for-input (string-match-p "> $" string))
+    (setq amazon-q--comint-ready-for-input (string-match-p "> $" clean-string))
 
     (when (string-match "Using tool: \\(.*\\)" amazon-q--comint-accumulated-prompt-output)
       (setq amazon-q--comint-tool-requiring-permission (match-string 1 amazon-q--comint-accumulated-prompt-output)))
 
     (when (string-match-p "Allow this action?" string)
       (if (string= (completing-read (format "Allow action %s?" amazon-q--comint-tool-requiring-permission) '("yes" "no")) "yes")
-          (comint-send-string (get-buffer-process (amazon-q--get-buffer-create)) "y\r")
-        (comint-send-string (get-buffer-process (amazon-q--get-buffer-create)) "n\r"))))
+          (comint-send-string proc "y\r")
+        (comint-send-string proc "n\r"))))
   (prog1
       (comint-output-filter proc string)
     (when (and amazon-q--comint-ready-for-input amazon-q--comint-callback)

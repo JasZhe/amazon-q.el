@@ -4,11 +4,15 @@ Transient prefix ~amazon-q-transient~ as an entry point to interact with Amazon 
 Supports either using term or comint backend.
 
 Currently the comint-backend is much more feature-full (since this is the one I mainly use)
+Initially I thought term would be easier to work with but as I got deeper into this, comint turned out to be
+the nicer one to work with.
+The term backend is mostly still here because of my stubbornness to try and make it work.
 
 A few niceties added:
 - Fontifying code blocks (comint only for now)
 - Pseudo "system prompt" via ~amazon-q-system-prompt-file~
   - be careful editing the system prompt as font locking relies on it.
+
 
 WARNING: Still pretty WIP but good enough for regular use.
 
