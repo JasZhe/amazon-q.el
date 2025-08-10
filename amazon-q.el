@@ -1,3 +1,4 @@
+;;; package --- Summary
 ;;; amazon-q.el -*- lexical-binding: t; -*-
 ;;
 ;; Copyright (C) 2025 Jason Zhen
@@ -29,6 +30,10 @@
 ;; Boston, MA 02110-1301, USA.
 ;;
 ;;; Commentary:
+;;; Simple interface for amazon Q cli.
+;;; Mimics some of the functionality other "vibe-coding" IDEs give.
+;;;
+;;; Code:
 
 (require 'transient)
 (require 'amazon-q-term-backend)
@@ -45,7 +50,7 @@
           (const :tag "Comint backend" comint))
   :group 'amaozn-q)
 
-(defcustom amazon-q-system-prompt-file "~/.amazon-q-system-prompt.md"
+(defcustom amazon-q-system-prompt-file ".amazon-q-system-prompt.md"
   "Path to system prompt file to automatically add to context."
   :type 'string
   :group 'amazon-q)
@@ -90,8 +95,9 @@ Please follow these formatting rules consistently throughout our conversation."
 
 (defun amazon-q--ensure-system-prompt-file ()
   "Create system prompt file if it doesn't exist and auto-generation is enabled.
+Per-project system prompt.
 Uses `amazon-q-default-system-prompt' as content if the file is createed."
-  (let ((prompt-file (expand-file-name amazon-q-system-prompt-file)))
+  (let ((prompt-file (expand-file-name (concat (project-root (project-current)) amazon-q-system-prompt-file))))
     (when (and amazon-q-auto-generate-system-prompt
                (not (file-exists-p prompt-file)))
       (with-temp-file prompt-file
@@ -100,8 +106,9 @@ Uses `amazon-q-default-system-prompt' as content if the file is createed."
     prompt-file))
 
 (defvar amazon-q-region-context-filename ".amazonq-context"
-  "Per-project file to contain context we can specify by region,
-rather than adding an entire file's worth of context.")
+  "Per-project file to contain context.
+Idea is that we can specify regions of code to send as context
+when we don't want to use an entire file which might be too much.")
 
 (defun amazon-q--ensure-context-file ()
   "Create temporary per-project context file if it doesn't exist."
@@ -118,11 +125,14 @@ rather than adding an entire file's worth of context.")
   "Regex to match code blocks with custom markers.")
 
 (defun amazon-q--get-buffer-create ()
+  "Get or create the amazon Q buffer.
+Currently is project based, but that can change in the future."
   (when (project-current)
     (get-buffer-create (concat "*amazon-q [" (project-name (project-current)) "]"))))
 
 
 (defun amazon-q-start ()
+  "Start or switch to the Amazon Q buffer."
   (interactive)
   (let ((system-prompt-file (amazon-q--ensure-system-prompt-file))
         (context-file (amazon-q--ensure-context-file)))
@@ -135,6 +145,7 @@ rather than adding an entire file's worth of context.")
 
 
 (defun amazon-q--send (prompt)
+  "Sends PROMPT to the relevant Q backend."
   (cond ((eq amazon-q-backend 'term) (amazon-q--term-send (amazon-q--get-buffer-create) prompt))
         ((eq amazon-q-backend 'comint) (amazon-q--comint-send (amazon-q--get-buffer-create) prompt))))
 
@@ -148,8 +159,10 @@ rather than adding an entire file's worth of context.")
 
 (defvar amazon-q--text-to-send nil "Text to be sent in the emacsclient buffer for amazon q.")
 (defvar amazon-q--send-region-immediately nil
-  "If t, the /editor buffer will immediately be sent via `server-edit'.
-Otherwise the user will have the opportunity to edit the prompt before being submitted to amazon q.
+  "Determine how the region will be sent to Q.
+If t, the /editor buffer will immediately be sent via `server-edit'.
+Otherwise the user will have the opportunity to edit the prompt
+before being submitted to Q.
 see: `amazon-q--send-region'")
 
 (defun amazon-q--editor-buffer-insert-region ()
@@ -232,6 +245,7 @@ With a prefix ARG, edit the prompt before sending."
     (amazon-q--send (format "/context add %s" file-to-add))))
 
 (defun amazon-q-remove-file-from-context ()
+  "Remove a file from context."
   (interactive)
   (amazon-q--send "/context show")
 
@@ -282,3 +296,4 @@ With a prefix ARG, edit the prompt before sending."
 
 
 (provide 'amazon-q)
+;;; amazon-q.el ends here.
