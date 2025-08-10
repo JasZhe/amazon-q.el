@@ -34,6 +34,7 @@
 ;;; Maybe there's an actual way to get the multi-line prompts to work with comint but for now this works
 ;;;
 ;;; Code:
+(require 'amazon-q-system-prompt)
 
 (defvar amazon-q--comint-accumulated-prompt-output ""
   "Output from the previous prompt.")
@@ -153,10 +154,11 @@ in the buffer via modifying `font-lock-face'."
   (save-excursion
     (comint-previous-prompt 1)
     (while (re-search-forward
-            (rx bol
+            (rx-to-string
+             `(: bol
                 ;; weird spacing issues if the FIRST thing it spits out is a code block
                 (? any " Thinking...> ")
-                (group "{begin_code_block}\n" (group (zero-or-more (any "a-zA-Z")))))
+                (group ,amazon-q-code-block-begin-marker "\n" (group (zero-or-more (any "a-zA-Z"))))))
             nil t)
       ;; some text is read-only which prohibits us from adding text props
       ;; so we temporarily inhibit it only in this function
@@ -166,7 +168,7 @@ in the buffer via modifying `font-lock-face'."
             (block-end nil)
             (lang (match-string 2))
             end)
-        (when (re-search-forward (rx-to-string `(group bol "{end_code_block}")))
+        (when (re-search-forward (rx-to-string `(group bol ,amazon-q-code-block-end-marker)))
           (setq block-end (match-beginning 0))
           (setq end (match-end 0))
 
