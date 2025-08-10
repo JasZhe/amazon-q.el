@@ -81,7 +81,11 @@ def example():
 This formatting helps with automated processing and integration with development tools.
 
 Please follow these formatting rules consistently throughout our conversation."
- "Default content for the system prompt file.")
+ "Default content for the system prompt file.
+WARNING: Be careful modifying this because fontification heavily relies on
+Q sending the code block delimters.
+
+Otherwise it makes font-locking the code blocks VERY difficult.")
 
 (defcustom amazon-q-code-block-begin-marker "{begin_code_block}"
  "Marker to begin code blocks."
