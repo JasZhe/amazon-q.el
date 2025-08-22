@@ -30,15 +30,15 @@
 ;;
 ;;; Commentary:
 
-(defvar amazon-q--term-accumulated-prompt-output ""
+(defvar-local amazon-q--term-accumulated-prompt-output ""
   "Output from the previous prompt.")
 
 (defvar-local amazon-q--term-ready nil)
 (defvar-local amazon-q--term-timer-fn nil)
 
-(defvar amazon-q--term-tool-requiring-permission "" "Potential tool that might require permission from the user")
+(defvar-local amazon-q--term-tool-requiring-permission "" "Potential tool that might require permission from the user")
 
-(defvar amazon-q--term-callback nil
+(defvar-local amazon-q--term-callback nil
   "Callback fn when the Amazon Q process is ready for more input.
 
 Should take no input.
@@ -54,32 +54,23 @@ Detecting tool permission promots."
     (setq amazon-q--term-ready t))
 
   (let ((clean-string (ansi-color-filter-apply string)))
-    (setq amazon-q--term-accumulated-prompt-output (concat amazon-q--term-accumulated-prompt-output clean-string))
-    ;;  is a carriage return represented by /r
-    ;; also check for any of the permutations of that loading spinner character
-    (setq amazon-q--term-accumulated-prompt-output
-          (replace-regexp-in-string "\r[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\\s-*Thinking\\.\\.\\." "" amazon-q--term-accumulated-prompt-output))
-    (setq amazon-q--term-accumulated-prompt-output
-          (replace-regexp-in-string "\r" "" amazon-q--term-accumulated-prompt-output))
+    (with-current-buffer (process-buffer proc)
+      (setq amazon-q--term-accumulated-prompt-output (concat amazon-q--term-accumulated-prompt-output clean-string))
+      ;;  is a carriage return represented by /r
+      ;; also check for any of the permutations of that loading spinner character
+      (setq amazon-q--term-accumulated-prompt-output
+            (replace-regexp-in-string "\r[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\\s-*Thinking\\.\\.\\." "" amazon-q--term-accumulated-prompt-output))
+      (setq amazon-q--term-accumulated-prompt-output
+            (replace-regexp-in-string "\r" "" amazon-q--term-accumulated-prompt-output))
 
-    (when (string-match "Using tool: \\(.*\\)" string)
-      (setq amazon-q--term-tool-requiring-permission (ansi-color-apply (match-string 1 string))))
+      (when (string-match "Using tool: \\(.*\\)" string)
+        (setq amazon-q--term-tool-requiring-permission (ansi-color-apply (match-string 1 string))))
+      (when (string-match-p "Allow this action?" string)
+        (if (string= (completing-read (format "Allow action %s?" amazon-q--term-tool-requiring-permission) '("yes" "no")) "yes")
+            (term-send-string proc "y")
+          (term-send-string proc "n"))))
 
-    (when (string-match-p "Allow this action?" string)
-      (if (string= (completing-read (format "Allow action %s?" amazon-q--term-tool-requiring-permission) '("yes" "no")) "yes")
-          (term-send-string proc "y")
-        (term-send-string proc "n")))
-
-    (prog1
-        (term-emulate-terminal proc string)
-      (when (and amazon-q--term-ready amazon-q--term-callback)
-        (condition-case nil
-            (unwind-protect
-                (progn
-                  (funcall amazon-q--term-callback))
-              (setq amazon-q--term-callback nil))
-          (quit nil)
-          (t (message "Amazon Q error in callback.")))))))
+    (term-emulate-terminal proc string)))
 
 (defun amazon-q--term-ready-context-files (buffer)
   (let ((files '()))
@@ -119,13 +110,21 @@ Detecting tool permission promots."
   (with-current-buffer buffer
     (unless amazon-q--term-ready
       (setq amazon-q--term-ready
-            (string-match-p "^\\(\\[.*\\] > \\|> \\)"
+            (string-match-p "^\\(\\[.*\\] \\)?> $"
                             (save-excursion
                               (goto-char (point-max))
                               (while (and (not (bobp))
                                           (looking-at "^\\s-*$"))
                                 (forward-line -1))
-                              (buffer-substring-no-properties (line-beginning-position) (line-end-position))))))
+                              (buffer-substring-no-properties (line-beginning-position) (line-end-position)))))
+      (when (and amazon-q--term-ready amazon-q--term-callback)
+        (condition-case nil
+            (unwind-protect
+                (progn
+                  (funcall amazon-q--term-callback))
+              (setq amazon-q--term-callback nil))
+          (quit nil)
+          (t (message "Amazon Q error in callback.")))))
     amazon-q--term-ready))
 
 (defun amazon-q--term-cleanup ()
@@ -144,7 +143,6 @@ For instance, timers."
   ;; we just have to make sure to clean up after ourselves
   (setq amazon-q--term-timer-fn (run-with-timer 0.3 0.3 #'amazon-q--term-check-ready buffer))
   (add-hook 'kill-buffer-hook #'amazon-q--term-cleanup nil t)
-  (set-process-filter (get-buffer-process (current-buffer)) 'amazon-q--term-process-filter)
-  )
+  (set-process-filter (get-buffer-process (current-buffer)) 'amazon-q--term-process-filter))
 
 (provide 'amazon-q-term-backend)
