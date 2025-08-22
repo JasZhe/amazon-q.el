@@ -195,10 +195,11 @@ With a prefix ARG, edit the prompt before sending."
 (defun amazon-q-remove-file-from-context ()
   "Remove a file from context."
   (interactive)
-  (cond ((eq amazon-q-backend 'term)
+  (with-current-buffer (amazon-q--get-buffer-create)
+    (cond ((eq amazon-q-backend 'term)
          (setq amazon-q--term-callback #'amazon-q--remove-file-from-context-callback))
         ((eq amazon-q-backend 'comint)
-         (setq amazon-q--comint-callback #'amazon-q--remove-file-from-context-callback)))
+         (setq amazon-q--comint-callback #'amazon-q--remove-file-from-context-callback))))
   (amazon-q--send "/context show"))
 
 (defun amazon-q--remove-file-from-context-callback ()
