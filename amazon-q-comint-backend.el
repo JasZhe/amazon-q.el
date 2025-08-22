@@ -36,13 +36,15 @@
 ;;; Code:
 (require 'amazon-q-system-prompt)
 
-(defvar amazon-q--comint-accumulated-prompt-output ""
+(defvar-local amazon-q--comint-accumulated-prompt-output ""
   "Output from the previous prompt.")
 
-(defvar amazon-q--comint-ready-for-input nil
+(defvar-local amazon-q--comint-ready-for-input nil
   "Whether Amazon Q is ready to accept new input.")
 
-(defvar amazon-q--comint-callback nil
+(defvar-local amazon-q--comint-timer-fn nil)
+
+(defvar-local amazon-q--comint-callback nil
   "Callback fn when the Amazon Q process is ready for more input.
 
 Should take no input.
@@ -55,7 +57,7 @@ We simply check to see if a new cli prompt got outputted by the process
 i.e. \"^ >$\"")
 
 
-(defvar amazon-q--comint-tool-requiring-permission ""
+(defvar-local amazon-q--comint-tool-requiring-permission ""
   "Potential tool that might require permission from the user.")
 
 (defun amazon-q--comint-process-filter (proc string)
@@ -70,30 +72,21 @@ Lastly, if we determine Q is done spewing output, calls
 `amazon-q--comint-callback' if specified."
 
   (let ((clean-string (ansi-color-filter-apply string)))
-    (setq amazon-q--comint-accumulated-prompt-output (concat amazon-q--comint-accumulated-prompt-output clean-string))
-    ;;  is a carriage return represented by /r
-    ;; also check for any of the permutations of that loading spinner character
-    (setq amazon-q--comint-accumulated-prompt-output
-          (replace-regexp-in-string "\r[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\\s-*Thinking\\.\\.\\." "" amazon-q--comint-accumulated-prompt-output))
+    ;; all these vars are buffer-local
+    (with-current-buffer (process-buffer proc)
+      (setq amazon-q--comint-accumulated-prompt-output (concat amazon-q--comint-accumulated-prompt-output clean-string))
+      ;;  is a carriage return represented by /r
+      ;; also check for any of the permutations of that loading spinner character
+      (setq amazon-q--comint-accumulated-prompt-output
+            (replace-regexp-in-string "\r[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\\s-*Thinking\\.\\.\\." "" amazon-q--comint-accumulated-prompt-output))
 
-    (setq amazon-q--comint-ready-for-input (string-match-p "> $" clean-string))
-
-    (when (string-match "Using tool: \\(.*\\)" amazon-q--comint-accumulated-prompt-output)
-      (setq amazon-q--comint-tool-requiring-permission (match-string 1 amazon-q--comint-accumulated-prompt-output)))
-
-    (when (string-match-p "Allow this action?" string)
-      (if (string= (completing-read (format "Allow action %s?" amazon-q--comint-tool-requiring-permission) '("yes" "no")) "yes")
-          (comint-send-string proc "y\r")
-        (comint-send-string proc "n\r"))))
-  (prog1
-      (comint-output-filter proc string)
-    (when (and amazon-q--comint-ready-for-input amazon-q--comint-callback)
-      ;; don't want 'error in process filter' cause of the callback
-      (condition-case nil
-          (unwind-protect
-              (funcall amazon-q--comint-callback)
-            (setq amazon-q--comint-callback nil))
-         (t (message "Amazon Q error in callback."))))))
+      (when (string-match "Using tool: \\(.*\\)" amazon-q--comint-accumulated-prompt-output)
+        (setq amazon-q--comint-tool-requiring-permission (match-string 1 amazon-q--comint-accumulated-prompt-output)))
+      (when (string-match-p "Allow this action?" string)
+        (if (string= (completing-read (format "Allow action %s?" amazon-q--comint-tool-requiring-permission) '("yes" "no")) "yes")
+            (comint-send-string proc "y\r")
+          (comint-send-string proc "n\r")))))
+  (comint-output-filter proc string))
 
 (defun amazon-q--comint-ready-context-files (buffer)
   (let ((files '()))
@@ -129,7 +122,8 @@ with bash since most users will have bash at least."
   "Call `comint-send-string' with PROMPT for BUFFER.
 Clears `amazon-q--comint-accumulated-prompt-output' before hand."
   (setq amazon-q--comint-accumulated-prompt-output "") ;; new prompt need to reset to ""
-  (setq amazon-q--comint-ready-for-input nil)
+  (with-current-buffer buffer
+      (setq amazon-q--comint-ready-for-input nil))
   (comint-send-string (get-buffer-process buffer) (format "%s\r" prompt)))
 
 
@@ -141,10 +135,11 @@ detect \"readiness\".
 Using `amazon-q--comint-callback' is preferred."
   (let ((timeout 1)
         (start-time (current-time)))
-    (while (and (not amazon-q--comint-ready-for-input)
+    (with-current-buffer buffer
+      (while (and (not amazon-q--comint-ready-for-input)
                 (< (float-time (time-subtract (current-time) start-time)) timeout))
       (sleep-for 0.1)
-      (accept-process-output (get-buffer-process buffer) 0.1))))
+      (accept-process-output (get-buffer-process buffer) 0.1)))))
 
 (defun amazon-q--comint-fontify-src-blocks ()
   "Fontifies body blocks for detected languages.
@@ -223,10 +218,46 @@ in the buffer via modifying `font-lock-face'."
 Checks `amazon-q--comint-ready-for-input' before running `amazon-q--comint-fontify-src-blocks'."
   (when amazon-q--comint-ready-for-input (amazon-q--comint-fontify-src-blocks)))
 
+(defun amazon-q--comint-cleanup ()
+  "Cleans up leftover elisp objects from the amazon q session.
+For instance, timers."
+  (message "Cleaning up amazon q comint buffer")
+  (cancel-timer amazon-q--comint-timer-fn))
+
+(defun amazon-q--comint-check-ready (buffer)
+  (with-current-buffer buffer
+    (unless amazon-q--comint-ready-for-input
+      (setq amazon-q--comint-ready-for-input
+            (string-match-p "^\\(\\[.*\\] \\)?> $"
+                            (save-excursion
+                              (goto-char (point-max))
+                              ;; for some reason line-beginning-position doesn't point to the right place
+                              ;; if we're actually at point-max so we move backward a char and it's fine
+                              (backward-char 1)
+                              (while (and (not (bobp))
+                                          (looking-at "^\\s-*$"))
+                                (forward-line -1))
+                              (buffer-substring-no-properties (line-beginning-position) (line-end-position)))))
+      (when (and amazon-q--comint-ready-for-input amazon-q--comint-callback)
+        (condition-case nil
+            (unwind-protect
+                (funcall amazon-q--comint-callback)
+              (setq amazon-q--comint-callback nil))
+          (t (message "Amazon Q error in callback."))))
+      )
+    amazon-q--comint-ready-for-input))
 
 (define-derived-mode amazon-q-comint-mode comint-mode "Amazon Q"
   "Major mode for Amazon Q chat sessions with the comint backend."
   (add-hook 'comint-output-filter-functions #'amazon-q--comint-trigger-fontification nil t)
+
+  ;; for now we spawn a timer for each amazon q process
+  ;; there might be a better way to manage it but this is the simplest
+  ;; we just have to make sure to clean up after ourselves
+  ;;
+  ;; TODO: is a timer here better than using comint-output-fitler-functions?
+  (setq amazon-q--comint-timer-fn (run-with-timer 0.1 0.1 #'amazon-q--comint-check-ready (current-buffer)))
+  (add-hook 'kill-buffer-hook #'amazon-q--comint-cleanup nil t)
 
   ;; need to unset the accumulated prompt output in the case where the user is interacting with amazon q
   ;; outside of amazon-q--comint-send
@@ -235,7 +266,6 @@ Checks `amazon-q--comint-ready-for-input' before running `amazon-q--comint-fonti
               (setq amazon-q--comint-ready-for-input nil)
               (setq amazon-q--comint-accumulated-prompt-output ""))
             nil t))
-
 
 (provide 'amazon-q-comint-backend)
 ;;; amazon-q-comint-backend.el ends here.
