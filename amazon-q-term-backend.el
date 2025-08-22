@@ -33,7 +33,8 @@
 (defvar amazon-q--term-accumulated-prompt-output ""
   "Output from the previous prompt.")
 
-(defvar amazon-q--term-ready nil)
+(defvar-local amazon-q--term-ready nil)
+(defvar-local amazon-q--term-timer-fn nil)
 
 (defvar amazon-q--term-tool-requiring-permission "" "Potential tool that might require permission from the user")
 
@@ -66,16 +67,8 @@ Detecting tool permission promots."
 
     (when (string-match-p "Allow this action?" string)
       (if (string= (completing-read (format "Allow action %s?" amazon-q--term-tool-requiring-permission) '("yes" "no")) "yes")
-          (term-send-string proc "y\n")
-        (term-send-string proc "n\r")))
-
-    (unless amazon-q--term-ready
-      (setq amazon-q--term-ready
-          (with-current-buffer (process-buffer proc)
-            (save-excursion
-              (end-of-buffer)
-              (re-search-backward "^.*[^[:space:]].*$" nil t)
-              (string-match-p term-prompt-regexp (buffer-substring-no-properties (line-beginning-position) (line-end-position)))))))
+          (term-send-string proc "y")
+        (term-send-string proc "n")))
 
     (prog1
         (term-emulate-terminal proc string)
@@ -88,33 +81,70 @@ Detecting tool permission promots."
           (quit nil)
           (t (message "Amazon Q error in callback.")))))))
 
+(defun amazon-q--term-ready-context-files (buffer)
+  (let ((files '()))
+    (with-current-buffer buffer
+      (end-of-buffer)
+      (re-search-backward "matched files in use:")
+      (forward-line 1)
+      (while (not (looking-at "^\\s-*$"))
+        (let ((line (buffer-substring-no-properties (line-beginning-position) (line-end-position))))
+          (string-match "^[^/]*\\(.*\\) (.*tkns)$" line)
+          (push (match-string 1 line) files))
+        (forward-line 1)))
+    files))
+
 (defun amazon-q--term-start (buffer)
   (let* (;; this is so amazon q cli will send us bells if chat notifications are enabled.
          ;; we can then use the bell character as a way to check if aamzon q is ready to accept more prompts
          (term-term-name "xterm-256color")
          (process-environment (cons "EDITOR=emacsclient" process-environment)))
-    (with-current-buffer buffer
-      (amazon-q-term-mode)
-      (term-exec buffer "amazon-q" "q" nil nil)
-      (set-process-filter (get-buffer-process (current-buffer)) 'amazon-q--term-process-filter))
+    (with-current-buffer buffer (amazon-q-term-mode))
 
-    ;; not sure if there's a better way but I just need to sleep a bit until the process is ready
-    ;; 0.6 seems safe enough
-    (sleep-for 0.6)
+    ;; if term buffer isn't ready to accept input, then sending commands gets kinda wonky at least for the first command
+    ;; it just inputs the newlines but doesn't actually "send" it to amazon q or something..
+    (while (not amazon-q--term-ready)
+      (sleep-for 0.1))
     (switch-to-buffer buffer)))
 
 (defun amazon-q--term-send (buffer prompt)
-  (setq amazon-q--term-ready nil)
-  (term-send-string (get-buffer-process buffer) (format "%s\r" prompt))
+  (with-current-buffer buffer
+    (while (not amazon-q--term-ready)
+      (sleep-for 0.1))
+    (setq amazon-q--term-ready nil)
+    (term-send-raw-string (format "%s" prompt)))
   (setq amazon-q--term-accumulated-prompt-output ""))
 
-(defvar amazon-q-term-mode-map
-  (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "<C-j>") #'term-send-raw)
-    map))
+(defun amazon-q--term-check-ready (buffer)
+  (with-current-buffer buffer
+    (unless amazon-q--term-ready
+      (setq amazon-q--term-ready
+            (string-match-p "^\\(\\[.*\\] > \\|> \\)"
+                            (save-excursion
+                              (goto-char (point-max))
+                              (while (and (not (bobp))
+                                          (looking-at "^\\s-*$"))
+                                (forward-line -1))
+                              (buffer-substring-no-properties (line-beginning-position) (line-end-position))))))
+    amazon-q--term-ready))
+
+(defun amazon-q--term-cleanup ()
+  "Cleans up leftover elisp objects from the amazon q session.
+For instance, timers."
+  (message "Cleaning up amazon q term buffer")
+  (cancel-timer amazon-q--term-timer-fn))
 
 (define-derived-mode amazon-q-term-mode term-mode "Amazon Q Term"
   :keymap amazon-q-term-mode-map
-  (setq-local term-prompt-regexp "^\\(\\[.*\\]\\)? > "))
+  (setq-local term-prompt-regexp "^\\(\\[.*\\]\\)? > ")
+  (setq amazon-q--term-ready nil)
+  (term-exec buffer "amazon-q" "q" nil nil)
+  ;; for now we spawn a timer for each amazon q process
+  ;; there might be a better way to manage it but this is the simplest
+  ;; we just have to make sure to clean up after ourselves
+  (setq amazon-q--term-timer-fn (run-with-timer 0.3 0.3 #'amazon-q--term-check-ready buffer))
+  (add-hook 'kill-buffer-hook #'amazon-q--term-cleanup nil t)
+  (set-process-filter (get-buffer-process (current-buffer)) 'amazon-q--term-process-filter)
+  )
 
 (provide 'amazon-q-term-backend)

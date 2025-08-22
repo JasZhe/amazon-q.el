@@ -3,10 +3,7 @@ Transient prefix ~amazon-q-transient~ as an entry point to interact with Amazon 
 
 Supports either using term or comint backend.
 
-Currently the comint-backend is much more feature-full (since this is the one I mainly use)
-Initially I thought term would be easier to work with but as I got deeper into this, comint turned out to be
-the nicer one to work with.
-The term backend is mostly still here because of my stubbornness to try and make it work.
+Currently the comint-backend is a little more feature-full (since this is the one I mainly use)
 
 A few niceties added:
 - Fontifying code blocks (comint only for now)

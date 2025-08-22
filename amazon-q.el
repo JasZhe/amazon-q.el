@@ -195,36 +195,23 @@ With a prefix ARG, edit the prompt before sending."
 (defun amazon-q-remove-file-from-context ()
   "Remove a file from context."
   (interactive)
-  (amazon-q--send "/context show")
-
   (cond ((eq amazon-q-backend 'term)
          (setq amazon-q--term-callback #'amazon-q--remove-file-from-context-callback))
         ((eq amazon-q-backend 'comint)
-         (setq amazon-q--comint-callback #'amazon-q--remove-file-from-context-callback))))
+         (setq amazon-q--comint-callback #'amazon-q--remove-file-from-context-callback)))
+  (amazon-q--send "/context show"))
 
 (defun amazon-q--remove-file-from-context-callback ()
   "Prompt for a file to removed from th amazon Q context."
   (interactive)
-  (let ((files '()))
-    (dolist (line
-             (if (eq amazon-q-backend 'comint)
-                 (split-string amazon-q--comint-accumulated-prompt-output "\n")
-               (split-string amazon-q--term-accumulated-prompt-output "\r")))
-      (cond
-           ;; Handle files with match counts: "~/path/file.ext (1 match)"
-           ((string-match "^[[:space:]]*\\([^[:space:]]+\\.[a-zA-Z]+\\)[[:space:]]*(\\([0-9]+\\) match)" line)
-            (push (match-string 1 line) files))
-           ;; Handle wildcard patterns: ".amazonq/rules/**/*.md"
-           ((string-match "^[[:space:]]*\\([^[:space:]]+/\\*\\*/\\*\\.[a-zA-Z]+\\)[[:space:]]*$" line)
-            (push (match-string 1 line) files))
-           ;; Handle simple filenames: "AmazonQ.md", "README.md"
-           ((string-match "^[[:space:]]*\\([^[:space:]]+\\.[a-zA-Z]+\\)[[:space:]]*$" line)
-            (push (match-string 1 line) files))))
-    (setq files (nreverse files))
-    (let ((file-to-remove (completing-read "Remove file from context: " files)))
-      (if file-to-remove
-          (amazon-q--send (format "/context remove %s" file-to-remove))
-        (message "No file selected.")))))
+  (let* ((files (cond ((eq amazon-q-backend 'comint)
+                       (amazon-q--comint-ready-context-files (amazon-q--get-buffer-create)))
+                      ((eq amazon-q-backend 'term)
+                       (amazon-q--term-ready-context-files (amazon-q--get-buffer-create)))))
+         (file-to-remove (completing-read "Remove file from context: " files)))
+    (if file-to-remove
+        (amazon-q--send (format "/context remove %s" file-to-remove))
+      (message "No file selected."))))
 
 ;;;###autoload
 (transient-define-prefix amazon-q-transient ()

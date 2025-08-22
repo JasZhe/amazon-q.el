@@ -95,6 +95,19 @@ Lastly, if we determine Q is done spewing output, calls
             (setq amazon-q--comint-callback nil))
          (t (message "Amazon Q error in callback."))))))
 
+(defun amazon-q--comint-ready-context-files (buffer)
+  (let ((files '()))
+    (with-current-buffer buffer
+      (end-of-buffer)
+      (re-search-backward "matched files in use:")
+      (forward-line 1)
+      (while (not (looking-at "^\\s-*$"))
+        (let ((line (buffer-substring-no-properties (line-beginning-position) (line-end-position))))
+          (string-match "^[^/]*\\(.*\\) (.*tkns)$" line)
+          (push (match-string 1 line) files))
+        (forward-line 1)))
+    files))
+
 
 (defun amazon-q--comint-start (buffer)
   "Start a Amazon Q in BUFFER.
