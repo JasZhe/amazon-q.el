@@ -255,7 +255,9 @@ For instance, timers."
   ;; there might be a better way to manage it but this is the simplest
   ;; we just have to make sure to clean up after ourselves
   ;;
-  ;; TODO: is a timer here better than using comint-output-fitler-functions?
+  ;; is a timer here better than using comint-output-filter-functions?
+  ;; Yes, experimentally, when the comint-output-filter-functions
+  ;; is triggered it seems like the comint-buffer doesn't have the next prompt yet.
   (setq amazon-q--comint-timer-fn (run-with-timer 0.1 0.1 #'amazon-q--comint-check-ready (current-buffer)))
   (add-hook 'kill-buffer-hook #'amazon-q--comint-cleanup nil t)
 
